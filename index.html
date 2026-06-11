@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyBP Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; }
+        .tab-active { color: #2563eb; border-top: 2px solid #2563eb; }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-20">
+    <header class="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-10">
+        <h1 class="text-xl font-bold text-center">MyBP Tracker</h1>
+    </header>
+
+    <main id="app" class="max-w-md mx-auto p-4">
+        <!-- Toast Notification Container -->
+        <div id="toast-container" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-xs space-y-2 pointer-events-none"></div>
+
+        <!-- Add Reading View -->
+        <section id="view-add" class="space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm space-y-4">
+                <h2 class="text-lg font-semibold flex items-center gap-2">
+                    <i data-lucide="plus-circle" class="text-blue-500"></i>
+                    บันทึกความดันวันนี้
+                </h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="text-sm text-gray-500">Systolic (ตัวบน)</label>
+                        <input type="number" id="sys" placeholder="120" class="w-full text-2xl font-bold p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-center">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-sm text-gray-500">Diastolic (ตัวล่าง)</label>
+                        <input type="number" id="dia" placeholder="80" class="w-full text-2xl font-bold p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-center">
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm text-gray-500">Pulse (ชีพจร)</label>
+                    <input type="number" id="pulse" placeholder="70" class="w-full text-2xl font-bold p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-center">
+                </div>
+                <div id="category-badge" class="hidden p-3 rounded-xl text-center font-bold text-sm"></div>
+                <button onclick="saveReading()" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2">
+                    <i data-lucide="save"></i> บันทึกข้อมูล
+                </button>
+            </div>
+        </section>
+
+        <!-- History View -->
+        <section id="view-history" class="hidden space-y-4">
+            <h2 class="text-lg font-semibold px-2">ประวัติการบันทึก</h2>
+            <div id="history-list" class="space-y-3">
+                <!-- Items dynamic -->
+            </div>
+        </section>
+
+        <!-- Report View -->
+        <section id="view-report" class="hidden space-y-6">
+            <div class="flex justify-between items-center px-2">
+                <h2 class="text-lg font-semibold">รายงานสุขภาพ</h2>
+                <button onclick="exportData()" class="text-blue-600 flex items-center gap-1 text-sm font-medium bg-blue-50 px-3 py-1.5 rounded-lg active:scale-95 transition-transform">
+                    <i data-lucide="download" class="w-4 h-4"></i> ส่งออกข้อมูล
+                </button>
+            </div>
+
+            <!-- Clinical Header -->
+            <div id="report-profile-header" class="hidden bg-blue-600 text-white p-4 rounded-2xl shadow-lg">
+                <div class="text-[10px] opacity-75 uppercase font-bold mb-1">รายงานสำหรับบุคลากรทางการแพทย์</div>
+                <div id="report-patient-name" class="text-xl font-black"></div>
+                <div id="report-patient-dob" class="text-xs opacity-90"></div>
+                <div id="report-patient-notes" class="text-[10px] mt-2 italic border-t border-white/20 pt-2 opacity-80"></div>
+            </div>
+
+            <!-- Time of Day Comparison -->
+            <div id="mae-comparison" class="bg-white p-4 rounded-2xl shadow-sm space-y-4">
+                <h3 class="text-md font-bold text-gray-700 flex items-center gap-2">
+                    <i data-lucide="clock" class="text-blue-500 w-5 h-5"></i>
+                    เปรียบเทียบ เช้า-เที่ยง-เย็น (7 วันล่าสุด)
+                </h3>
+                <div class="grid grid-cols-3 gap-2" id="mae-stats-grid"></div>
+            </div>
+
+            <!-- Advanced Clinical Metrics -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm space-y-4">
+                <h3 class="text-md font-bold text-gray-700 flex items-center gap-2">
+                    <i data-lucide="activity" class="text-red-500 w-5 h-5"></i>
+                    ค่าดัชนีทางคลินิก (Clinical Metrics)
+                </h3>
+                <div class="grid grid-cols-2 gap-3" id="clinical-metrics-grid"></div>
+                <div class="p-3 bg-gray-50 rounded-xl text-[10px] text-gray-500 leading-relaxed">
+                    <strong>คำอธิบายสำหรับแพทย์:</strong><br>
+                    • <strong>MAP:</strong> ความดันเฉลี่ยในหลอดเลือดแดง<br>
+                    • <strong>PP:</strong> Pulse Pressure (>60 mmHg บ่งชี้ความเสี่ยงหลอดเลือดแข็ง)<br>
+                    • <strong>BPV (SD):</strong> การแกว่งตัวของความดัน (>10 mmHg คือมีความเสี่ยงสูง)
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl shadow-sm">
+                <h2 class="text-lg font-semibold mb-4 text-center">แนวโน้มความดัน</h2>
+                <canvas id="trendChart"></canvas>
+            </div>
+            
+            <div id="summary-stats" class="grid grid-cols-2 gap-4"></div>
+        </section>
+
+        <!-- Profile View -->
+        <section id="view-profile" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm space-y-4">
+                <h2 class="text-lg font-semibold flex items-center gap-2">
+                    <i data-lucide="user-circle" class="text-blue-500"></i>
+                    ข้อมูลผู้ใช้งาน
+                </h2>
+                <div class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-500 font-bold uppercase">ชื่อ-นามสกุล</label>
+                        <input type="text" id="profile-name" class="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-500 font-bold uppercase">วันเกิด/อายุ</label>
+                        <input type="text" id="profile-dob" placeholder="เช่น 01/01/2510" class="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-500 font-bold uppercase">ยาที่ใช้ประจำ / โรคประจำตัว</label>
+                        <textarea id="profile-notes" rows="3" class="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                    <button onclick="exportData()" class="flex flex-col items-center justify-center p-4 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 active:scale-95 transition-transform">
+                        <i data-lucide="download" class="w-6 h-6 mb-1"></i>
+                        <span class="text-xs font-bold">ส่งออก (Backup)</span>
+                    </button>
+                    <button onclick="document.getElementById('import-file').click()" class="flex flex-col items-center justify-center p-4 bg-green-50 text-green-600 rounded-2xl border border-green-100 active:scale-95 transition-transform">
+                        <i data-lucide="upload" class="w-6 h-6 mb-1"></i>
+                        <span class="text-xs font-bold">นำเข้า (Restore)</span>
+                    </button>
+                    <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
+                </div>
+
+                <div class="bg-red-50 p-4 rounded-2xl border border-red-100">
+                <h3 class="text-red-600 font-bold mb-2 flex items-center gap-2">
+                    <i data-lucide="alert-triangle" class="w-4 h-4"></i> จัดการข้อมูลระบบ
+                </h3>
+                <p class="text-[10px] text-red-500 mb-4 uppercase font-bold">อันตราย: ข้อมูลทั้งหมดจะถูกลบถาวร</p>
+                <button onclick="clearAllData()" class="w-full py-3 border border-red-200 text-red-600 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors">
+                    ลบข้อมูลทั้งหมดในเครื่อง
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal for Secret Code -->
+    <div id="code-modal" class="hidden fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4 text-gray-900">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <h3 id="code-title" class="text-lg font-bold">รหัสลับข้อมูล</h3>
+            <p id="code-msg" class="text-xs text-gray-500">กำหนดรหัสผ่านเพื่อล็อคไฟล์สำรองข้อมูลของคุณ</p>
+            <input type="password" id="secret-code-input" placeholder="ใส่รหัสลับที่นี่" class="w-full p-4 bg-gray-50 border rounded-xl text-center text-xl font-bold tracking-widest outline-none focus:ring-2 focus:ring-blue-500">
+            <div class="flex gap-3 pt-2">
+                <button id="code-cancel" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold">ยกเลิก</button>
+                <button id="code-ok" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold">ตกลง</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Confirm -->
+    <div id="confirm-modal" class="hidden fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <h3 id="confirm-title" class="text-lg font-bold text-gray-900">ยืนยันการทำรายการ</h3>
+            <p id="confirm-msg" class="text-sm text-gray-600">คุณแน่ใจหรือไม่ที่จะดำเนินการนี้?</p>
+            <div class="flex gap-3 pt-2">
+                <button id="confirm-cancel" class="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold active:scale-95 transition-transform">ยกเลิก</button>
+                <button id="confirm-ok" class="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold active:scale-95 transition-transform shadow-lg shadow-red-200">ยืนยัน</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 shadow-2xl z-20">
+        <button onclick="switchView('add')" id="nav-add" class="flex flex-col items-center p-2 tab-active">
+            <i data-lucide="edit"></i>
+            <span class="text-xs">บันทึก</span>
+        </button>
+        <button onclick="switchView('history')" id="nav-history" class="flex flex-col items-center p-2 text-gray-400">
+            <i data-lucide="history"></i>
+            <span class="text-xs">ประวัติ</span>
+        </button>
+        <button onclick="switchView('report')" id="nav-report" class="flex flex-col items-center p-2 text-gray-400">
+            <i data-lucide="bar-chart-2"></i>
+            <span class="text-xs">รายงาน</span>
+        </button>
+        <button onclick="switchView('profile')" id="nav-profile" class="flex flex-col items-center p-2 text-gray-400">
+            <i data-lucide="user"></i>
+            <span class="text-xs">โปรไฟล์</span>
+        </button>
+    </nav>
+
+    <script>
+        let readings = JSON.parse(localStorage.getItem('mybp_readings') || '[]');
+        let profile = JSON.parse(localStorage.getItem('mybp_profile') || '{"name": "", "dob": "", "notes": ""}');
+        let trendChart = null;
+        let categoryChart = null;
+
+        // Sync Profile to Inputs
+        function syncProfileInputs() {
+            document.getElementById('profile-name').value = profile.name || '';
+            document.getElementById('profile-dob').value = profile.dob || '';
+            document.getElementById('profile-notes').value = profile.notes || '';
+        }
+
+        function saveProfile() {
+            profile.name = document.getElementById('profile-name').value;
+            profile.dob = document.getElementById('profile-dob').value;
+            profile.notes = document.getElementById('profile-notes').value;
+            localStorage.setItem('mybp_profile', JSON.stringify(profile));
+            showToast('บันทึกโปรไฟล์เรียบร้อยแล้ว');
+        }
+
+        function clearAllData() {
+            customConfirm('ยืนยันการลบ', 'คุณต้องการลบข้อมูลทั้งหมดรวมถึงประวัติบันทึกใช่หรือไม่?', () => {
+                localStorage.clear();
+                readings = [];
+                profile = {"name": "", "dob": "", "notes": ""};
+                showToast('ลบข้อมูลทั้งหมดแล้ว');
+                location.reload();
+            });
+        }
+
+        // Statistical Math
+        function calculateSD(array) {
+            if (array.length < 2) return 0;
+            const mean = array.reduce((a, b) => a + b) / array.length;
+            return Math.sqrt(array.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / (array.length - 1));
+        }
+
+        // ... existing toast, confirm, category functions ...
+
+        // Toast System
+        function showToast(msg, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-600' : 'bg-red-600';
+            const icon = type === 'success' ? 'check-circle' : 'alert-circle';
+            
+            toast.className = `${bgColor} text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 animate-bounce transition-all duration-300 pointer-events-auto`;
+            toast.innerHTML = `<i data-lucide="${icon}" class="w-5 h-5"></i> <span class="text-sm font-medium">${msg}</span>`;
+            
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', '-translate-y-4');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Custom Confirm
+        function customConfirm(title, msg, onOk) {
+            const modal = document.getElementById('confirm-modal');
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-msg').innerText = msg;
+            modal.classList.remove('hidden');
+
+            const okBtn = document.getElementById('confirm-ok');
+            const cancelBtn = document.getElementById('confirm-cancel');
+
+            const handleOk = () => {
+                modal.classList.add('hidden');
+                onOk();
+                cleanup();
+            };
+            const handleCancel = () => {
+                modal.classList.add('hidden');
+                cleanup();
+            };
+            const cleanup = () => {
+                okBtn.removeEventListener('click', handleOk);
+                cancelBtn.removeEventListener('click', handleCancel);
+            };
+
+            okBtn.addEventListener('click', handleOk);
+            cancelBtn.addEventListener('click', handleCancel);
+        }
+
+        // Time of Day Helper
+        function getTimeOfDay(isoString) {
+            const hour = new Date(isoString).getHours();
+            if (hour >= 5 && hour < 12) return 'morning';
+            if (hour >= 12 && hour < 18) return 'midday';
+            return 'evening';
+        }
+
+        const timeOfDayLabels = {
+            morning: { label: 'เช้า', color: 'text-orange-500', icon: 'sunrise' },
+            midday: { label: 'เที่ยง', color: 'text-yellow-500', icon: 'sun' },
+            evening: { label: 'เย็น', color: 'text-indigo-600', icon: 'moon' }
+        };
+
+        // Medical Classification Logic (AHA/ACC 2017)
+        function getCategory(sys, dia) {
+            if (sys >= 180 || dia >= 120) return { label: 'Crisis', color: 'bg-red-600', text: 'text-white' };
+            if (sys >= 140 || dia >= 90) return { label: 'Stage 2', color: 'bg-red-500', text: 'text-white' };
+            if (sys >= 130 || dia >= 80) return { label: 'Stage 1', color: 'bg-orange-500', text: 'text-white' };
+            if (sys >= 120 && dia < 80) return { label: 'Elevated', color: 'bg-yellow-400', text: 'text-black' };
+            return { label: 'Normal', color: 'bg-green-500', text: 'text-white' };
+        }
+
+        const categoryLabels = {
+            'Normal': 'ปกติ',
+            'Elevated': 'ค่อนข้างสูง',
+            'Stage 1': 'ความดันสูง ระดับ 1',
+            'Stage 2': 'ความดันสูง ระดับ 2',
+            'Crisis': 'วิกฤต (พบแพทย์ด่วน)'
+        };
+
+        function updateCategoryPreview() {
+            const sys = parseInt(document.getElementById('sys').value);
+            const dia = parseInt(document.getElementById('dia').value);
+            const badge = document.getElementById('category-badge');
+
+            if (sys && dia) {
+                const cat = getCategory(sys, dia);
+                badge.innerText = `ระดับ: ${categoryLabels[cat.label]}`;
+                badge.className = `${cat.color} ${cat.text} p-3 rounded-xl text-center font-bold text-sm block`;
+            } else {
+                badge.className = 'hidden';
+            }
+        }
+
+        document.getElementById('sys').addEventListener('input', updateCategoryPreview);
+        document.getElementById('dia').addEventListener('input', updateCategoryPreview);
+
+        function saveReading() {
+            const sys = parseInt(document.getElementById('sys').value);
+            const dia = parseInt(document.getElementById('dia').value);
+            const pulse = parseInt(document.getElementById('pulse').value);
+
+            if (!sys || !dia || !pulse) {
+                showToast('กรุณากรอกข้อมูลให้ครบถ้วน', 'error');
+                return;
+            }
+
+            const cat = getCategory(sys, dia);
+            const reading = {
+                id: Date.now().toString(),
+                timestamp: new Date().toISOString(),
+                sys, dia, pulse,
+                category: cat.label
+            };
+
+            readings.unshift(reading);
+            localStorage.setItem('mybp_readings', JSON.stringify(readings));
+
+            // Reset Form
+            document.getElementById('sys').value = '';
+            document.getElementById('dia').value = '';
+            document.getElementById('pulse').value = '';
+            updateCategoryPreview();
+
+            showToast('บันทึกข้อมูลเรียบร้อยแล้ว');
+            setTimeout(() => switchView('history'), 500);
+        }
+
+        function deleteReading(id) {
+            customConfirm('ลบข้อมูล', 'คุณต้องการลบรายการบันทึกนี้ใช่หรือไม่?', () => {
+                readings = readings.filter(r => r.id !== id);
+                localStorage.setItem('mybp_readings', JSON.stringify(readings));
+                renderHistory();
+                showToast('ลบข้อมูลเรียบร้อยแล้ว');
+            });
+        }
+
+        // Crypto Helpers
+        async function deriveKey(password, salt) {
+            const encoder = new TextEncoder();
+            const passwordKey = await crypto.subtle.importKey(
+                "raw", encoder.encode(password), "PBKDF2", false, ["deriveKey"]
+            );
+            return crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+                passwordKey,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        async function encryptData(data, password) {
+            const encoder = new TextEncoder();
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const key = await deriveKey(password, salt);
+            const encrypted = await crypto.subtle.encrypt(
+                { name: "AES-GCM", iv },
+                key,
+                encoder.encode(JSON.stringify(data))
+            );
+
+            // Combine Salt + IV + Encrypted Data into one Uint8Array
+            const combined = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+            combined.set(salt, 0);
+            combined.set(iv, salt.length);
+            combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+            
+            // Return as Base64 for easy sharing
+            return btoa(String.fromCharCode(...combined));
+        }
+
+        async function decryptData(base64Data, password) {
+            try {
+                const combined = new Uint8Array(atob(base64Data).split("").map(c => c.charCodeAt(0)));
+                const salt = combined.slice(0, 16);
+                const iv = combined.slice(16, 28);
+                const encrypted = combined.slice(28);
+                const key = await deriveKey(password, salt);
+                const decrypted = await crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv },
+                    key,
+                    encrypted
+                );
+                return JSON.parse(new TextDecoder().decode(decrypted));
+            } catch (e) {
+                throw new Error('รหัสลับไม่ถูกต้อง หรือไฟล์เสียหาย');
+            }
+        }
+
+        function promptCode(title, msg, onOk) {
+            const modal = document.getElementById('code-modal');
+            const input = document.getElementById('secret-code-input');
+            const okBtn = document.getElementById('code-ok');
+            const cancelBtn = document.getElementById('code-cancel');
+            
+            document.getElementById('code-title').innerText = title;
+            document.getElementById('code-msg').innerText = msg;
+            input.value = '';
+            modal.classList.remove('hidden');
+            input.focus();
+
+            const handleOk = () => {
+                if (input.value.length < 4) {
+                    showToast('กรุณาระบุรหัสอย่างน้อย 4 ตัวอักษร', 'error');
+                    return;
+                }
+                modal.classList.add('hidden');
+                onOk(input.value);
+                cleanup();
+            };
+            const handleCancel = () => {
+                modal.classList.add('hidden');
+                cleanup();
+            };
+            const cleanup = () => {
+                okBtn.removeEventListener('click', handleOk);
+                cancelBtn.removeEventListener('click', handleCancel);
+            };
+
+            okBtn.addEventListener('click', handleOk);
+            cancelBtn.addEventListener('click', handleCancel);
+        }
+
+        async function exportData() {
+            promptCode('ตั้งรหัสลับ Backup', 'รหัสนี้จะใช้สำหรับนำเข้าข้อมูลในเครื่องใหม่', async (code) => {
+                const data = {
+                    readings: readings,
+                    profile: profile,
+                    exportDate: new Date().toISOString(),
+                    app: "MyBP Tracker"
+                };
+                try {
+                    const encryptedBase64 = await encryptData(data, code);
+                    const blob = new Blob([encryptedBase64], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `mybp_secure_${new Date().toLocaleDateString('th-TH').replace(/\//g, '-')}.mybp`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    showToast('ส่งออกข้อมูลเข้ารหัสสำเร็จ');
+                } catch (e) {
+                    showToast('เกิดข้อผิดพลาดในการเข้ารหัส', 'error');
+                }
+            });
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const content = e.target.result;
+                promptCode('ใส่รหัสลับเพื่อถอดรหัส', 'กรุณาระบุรหัสลับที่คุณตั้งไว้ตอนส่งออกข้อมูล', async (code) => {
+                    try {
+                        const imported = await decryptData(content, code);
+                        
+                        customConfirm('ยืนยันการนำเข้า', `พบข้อมูล ${imported.readings.length} รายการ การนำเข้าจะเขียนทับข้อมูลปัจจุบัน คุณต้องการดำเนินการต่อหรือไม่?`, () => {
+                            readings = imported.readings;
+                            if (imported.profile) profile = imported.profile;
+                            
+                            localStorage.setItem('mybp_readings', JSON.stringify(readings));
+                            localStorage.setItem('mybp_profile', JSON.stringify(profile));
+                            
+                            showToast('กู้คืนข้อมูลสำเร็จ');
+                            setTimeout(() => location.reload(), 1000);
+                        });
+                    } catch (err) {
+                        showToast(err.message, 'error');
+                    }
+                });
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // Reset input
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            list.innerHTML = readings.length === 0 ? '<p class="text-center text-gray-400 py-10">ยังไม่มีข้อมูลบันทึก</p>' : '';
+            
+            readings.forEach(r => {
+                const date = new Date(r.timestamp).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+                const time = new Date(r.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                const cat = getCategory(r.sys, r.dia);
+                const timeOfDay = getTimeOfDay(r.timestamp);
+                const tod = timeOfDayLabels[timeOfDay];
+
+                const div = document.createElement('div');
+                div.className = 'bg-white p-4 rounded-2xl shadow-sm border-l-8 flex justify-between items-center ' + cat.color.replace('bg-', 'border-');
+                div.innerHTML = `
+                    <div class="flex-grow">
+                        <div class="text-[10px] flex items-center gap-1 mb-1 font-bold ${tod.color}">
+                            <i data-lucide="${tod.icon}" class="w-3 h-3"></i> ${tod.label}
+                        </div>
+                        <div class="text-xs text-gray-500">${date} • ${time}</div>
+                        <div class="text-lg font-bold">${r.sys}/${r.dia} <span class="text-sm font-normal text-gray-500">mmHg</span></div>
+                        <div class="text-sm text-gray-600">ชีพจร: ${r.pulse} bpm</div>
+                        <div class="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.color} ${cat.text}">${categoryLabels[r.category]}</div>
+                    </div>
+                    <button onclick="deleteReading('${r.id}')" class="p-2 text-gray-300 hover:text-red-500 transition-colors">
+                        <i data-lucide="trash-2" class="w-5 h-5"></i>
+                    </button>
+                `;
+                list.appendChild(div);
+            });
+            lucide.createIcons();
+        }
+
+        function renderReport() {
+            const reportView = document.getElementById('view-report');
+            if (readings.length === 0) {
+                reportView.innerHTML = '<p class="text-center text-gray-400 py-10">บันทึกข้อมูลเพื่อดูรายงาน</p>';
+                return;
+            }
+
+            // Profile Header
+            const header = document.getElementById('report-profile-header');
+            if (profile.name) {
+                header.classList.remove('hidden');
+                document.getElementById('report-patient-name').innerText = profile.name;
+                document.getElementById('report-patient-dob').innerText = `วันเกิด: ${profile.dob || '-'}`;
+                document.getElementById('report-patient-notes').innerText = profile.notes ? `หมายเหตุ: ${profile.notes}` : '';
+            } else {
+                header.classList.add('hidden');
+            }
+
+            // MAE Comparison Logic
+            const last7 = readings.filter(r => (Date.now() - new Date(r.timestamp).getTime()) < 7 * 24 * 60 * 60 * 1000);
+            const maeGroups = { morning: [], midday: [], evening: [] };
+            last7.forEach(r => maeGroups[getTimeOfDay(r.timestamp)].push(r));
+
+            const maeGrid = document.getElementById('mae-stats-grid');
+            maeGrid.innerHTML = '';
+            ['morning', 'midday', 'evening'].forEach(key => {
+                const group = maeGroups[key];
+                const label = timeOfDayLabels[key];
+                let content = '<div class="text-gray-300 text-[10px]">ไม่มีข้อมูล</div>';
+                
+                if (group.length > 0) {
+                    const avgSys = Math.round(group.reduce((s, r) => s + r.sys, 0) / group.length);
+                    const avgDia = Math.round(group.reduce((s, r) => s + r.dia, 0) / group.length);
+                    const cat = getCategory(avgSys, avgDia);
+                    content = `
+                        <div class="text-xl font-black ${cat.color.replace('bg-', 'text-')}">${avgSys}/${avgDia}</div>
+                        <div class="text-[9px] font-bold opacity-70">${categoryLabels[cat.label]}</div>
+                    `;
+                }
+
+                maeGrid.innerHTML += `
+                    <div class="bg-gray-50 p-3 rounded-xl border text-center flex flex-col items-center">
+                        <i data-lucide="${label.icon}" class="w-4 h-4 ${label.color} mb-1"></i>
+                        <div class="text-[10px] font-bold text-gray-500 uppercase">${label.label}</div>
+                        ${content}
+                    </div>
+                `;
+            });
+
+            // Clinical Metrics Logic
+            const clinicalGrid = document.getElementById('clinical-metrics-grid');
+            const allSys = readings.map(r => r.sys);
+            const allDia = readings.map(r => r.dia);
+            
+            const avgSys = Math.round(allSys.reduce((a, b) => a + b) / allSys.length);
+            const avgDia = Math.round(allDia.reduce((a, b) => a + b) / allDia.length);
+            
+            const mapValue = Math.round(avgDia + (avgSys - avgDia) / 3);
+            const pulsePressure = avgSys - avgDia;
+            const sdSys = calculateSD(allSys).toFixed(1);
+            
+            const metrics = [
+                { label: 'MAP (เฉลี่ย)', value: `${mapValue} <span class="text-[10px] font-normal">mmHg</span>`, color: 'text-blue-600' },
+                { label: 'Pulse Pressure', value: `${pulsePressure} <span class="text-[10px] font-normal">mmHg</span>`, color: pulsePressure > 60 ? 'text-red-600' : 'text-green-600' },
+                { label: 'Variability (SD)', value: `${sdSys} <span class="text-[10px] font-normal">mmHg</span>`, color: sdSys > 10 ? 'text-red-600' : 'text-green-600' },
+                { label: 'จำนวนบันทึก', value: `${readings.length} <span class="text-[10px] font-normal">ครั้ง</span>`, color: 'text-gray-600' }
+            ];
+
+            clinicalGrid.innerHTML = metrics.map(m => `
+                <div class="bg-gray-50 p-3 rounded-xl border">
+                    <div class="text-[10px] font-bold text-gray-400 uppercase mb-1">${m.label}</div>
+                    <div class="text-xl font-black ${m.color}">${m.value}</div>
+                </div>
+            `).join('');
+
+            // Trend Chart
+            const ctxTrend = document.getElementById('trendChart').getContext('2d');
+            const historyData = [...readings].reverse();
+            const labels = historyData.slice(-10).map(r => new Date(r.timestamp).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }));
+            const sysData = historyData.slice(-10).map(r => r.sys);
+            const diaData = historyData.slice(-10).map(r => r.dia);
+
+            if (trendChart) trendChart.destroy();
+            trendChart = new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Systolic', data: sysData, borderColor: '#ef4444', tension: 0.3, fill: false, pointBackgroundColor: '#ef4444' },
+                        { label: 'Diastolic', data: diaData, borderColor: '#3b82f6', tension: 0.3, fill: false, pointBackgroundColor: '#3b82f6' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } },
+                    scales: { y: { beginAtZero: false, min: 40 } }
+                }
+            });
+
+            // Summary Stats
+            if (last7.length > 0) {
+                const avgSys7 = Math.round(last7.reduce((s, r) => s + r.sys, 0) / last7.length);
+                const avgDia7 = Math.round(last7.reduce((s, r) => s + r.dia, 0) / last7.length);
+                const statsDiv = document.getElementById('summary-stats');
+                statsDiv.innerHTML = `
+                    <div class="bg-blue-50 p-4 rounded-2xl text-center">
+                        <div class="text-[10px] text-blue-600 font-bold uppercase">เฉลี่ย 7 วัน</div>
+                        <div class="text-2xl font-black text-blue-900">${avgSys7}/${avgDia7}</div>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-2xl text-center">
+                        <div class="text-[10px] text-blue-600 font-bold uppercase">ความถี่บันทึก</div>
+                        <div class="text-2xl font-black text-blue-900">${last7.length} ครั้ง</div>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        function switchView(view) {
+            document.querySelectorAll('main section').forEach(s => s.classList.add('hidden'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('tab-active', 'text-gray-400'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.add('text-gray-400'));
+
+            const targetSection = document.getElementById(`view-${view}`);
+            if (targetSection) targetSection.classList.remove('hidden');
+            
+            const targetNav = document.getElementById(`nav-${view}`);
+            if (targetNav) {
+                targetNav.classList.add('tab-active');
+                targetNav.classList.remove('text-gray-400');
+            }
+
+            if (view === 'history') renderHistory();
+            if (view === 'report') renderReport();
+            if (view === 'profile') syncProfileInputs();
+            lucide.createIcons();
+        }
+
+        // Initialize
+        lucide.createIcons();
+    </script>
+</body>
+</html>
